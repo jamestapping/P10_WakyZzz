@@ -39,11 +39,15 @@ class WakyZzzTests: XCTestCase {
         dataManager = DataManager()
         notificationScheduler = NotificationScheduler()
         
+        removeAllNotifications()
+        
         deleteAllAlarms()
         
     }
     
     override func tearDown() {
+        
+        removeAllNotifications()
         
         deleteAllAlarms()
     }
@@ -83,11 +87,6 @@ class WakyZzzTests: XCTestCase {
     }
     
     func testGivenNoAlarmIsSet_WhenUserCreatesAlarmWithNoDaysSpecified_AlarmIsSetForCurrentDayWithNoRepeat() {
-        
-        // Remove all notifications.
-        
-        notificationCenter.removeAllPendingNotificationRequests()
-        notificationCenter.removeAllDeliveredNotifications()
         
         let formatter = DateFormatter()
         formatter.dateFormat = "dd"
@@ -149,11 +148,6 @@ class WakyZzzTests: XCTestCase {
     func testGivenAlarmCreated_WhenUserDisablesAlarm_AlarmIsDisabled() {
         
         // - Test Alarm disabled, corresponding notification should be removed, Alarm still in CoreData
-        
-        // Remove all notifications.
-        
-        notificationCenter.removeAllPendingNotificationRequests()
-        notificationCenter.removeAllDeliveredNotifications()
         
         let exp = expectation(description: "Check Schedule State - false")
         
@@ -257,11 +251,6 @@ class WakyZzzTests: XCTestCase {
         // Test that once an alarm has been created and a notification with it, that a notification is
         // pending with the correct identifier
         
-        // Remove all notifications.
-        
-        notificationCenter.removeAllPendingNotificationRequests()
-        notificationCenter.removeAllDeliveredNotifications()
-        
         let exp = expectation(description: "Check Schedule State - false")
         
         let newAlarm = Alarm()
@@ -311,7 +300,7 @@ class WakyZzzTests: XCTestCase {
         
     }
     
-    func testGivenNoAlarmTimeSet_WhenUserAddsAlarm_AlarmDefaultsTo8am() {
+    func testGivenNoAlarmExists_WhenUserAddsDefaultAlarm_alarmTimeIsSetTo8am() {
         
         // Testing alarm defaults to 8:00 am when nothing specified
         
@@ -332,6 +321,7 @@ class WakyZzzTests: XCTestCase {
         
     }
     
+    
     // Helper Methods
     
     func confirmNotificationIsPending(for uuid: UUID, completion: @escaping  (Bool) -> Void) {
@@ -339,8 +329,6 @@ class WakyZzzTests: XCTestCase {
         var modifiedIdentifier = ""
         
         notificationCenter.getPendingNotificationRequests { (notificationRequests) in
-            
-            print ("Notification count = ", notificationRequests.count)
             
             if notificationRequests.count != 0 {
                 
@@ -355,12 +343,16 @@ class WakyZzzTests: XCTestCase {
                 
             }
             
-            
-            
         }
         
     }
     
+    func removeAllNotifications() {
+        
+        notificationCenter.removeAllPendingNotificationRequests()
+        notificationCenter.removeAllDeliveredNotifications()
+        
+    }
     
     func deleteAllAlarms() {
         
