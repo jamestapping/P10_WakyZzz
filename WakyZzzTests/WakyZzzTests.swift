@@ -11,7 +11,9 @@
 // - Create Alarm and Core Data Persistance
 // - Test alarm notifications scheduling
 // - Test Delete alarm
-
+// - Test alarm defaults to 8:00 am
+// - Test non repeating alarm created for the same day
+// - Test Alarm disabled, corresponding notification should be removed, Alarm still in CoreData
 
 
 import XCTest
@@ -26,11 +28,13 @@ class WakyZzzTests: XCTestCase {
     var matchingUUID = ""
     var modifiedIdentifier = ""
     
+    var scheduledState = false
+    
     var notificationRequestsCount: Int?
     
     override func setUp() {
         super.setUp()
-    
+        
         notificationCenter = UNUserNotificationCenter.current()
         dataManager = DataManager()
         notificationScheduler = NotificationScheduler()
@@ -45,7 +49,7 @@ class WakyZzzTests: XCTestCase {
     }
     
     
-    func testCreateAlarmAndCoreDataPersistance() {
+    func testGivenAlarmSetbyUser_WhenAppIsKilled_AlarmAvailableWhenAppRun() {
         
         // Test adding repeat alarm for 11.00 am monday,
         // and retrieveing it from CoreData
@@ -69,8 +73,8 @@ class WakyZzzTests: XCTestCase {
         // Convert to Alarm object
         
         let alarm = dataManager.convertAlarm(managedAlarm: retrievedManagedAlarm)
-
-        // Testing alarm time and repeat days
+        
+        // Testing alarm time and repeat days correspond to what was defined
         
         XCTAssert(alarm.time == timeToTest)
         XCTAssert(alarm.repeatDays == repeatDaysToTest)
@@ -78,7 +82,142 @@ class WakyZzzTests: XCTestCase {
         
     }
     
-    func testDeleteAlarm() {
+    func testGivenNoAlarmIsSet_WhenUserCreatesAlarmWithNoDaysSpecified_AlarmIsSetForCurrentDayWithNoRepeat() {
+        
+        // Remove all notifications.
+        
+        notificationCenter.removeAllPendingNotificationRequests()
+        notificationCenter.removeAllDeliveredNotifications()
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd"
+        let dayOfMonth = Int(formatter.string(from: Date()))
+        
+        let newAlarm = Alarm()
+        
+        let timeToTest = 18 * 3600 // 18.00 am
+        
+        newAlarm.time = timeToTest
+        
+        // Save to CoreData
+        
+        let uuid = dataManager.addAlarm(alarm: newAlarm)
+        
+        // Schedule the alarm
+        
+        notificationScheduler.enableAlarm(alarm: newAlarm, uuid: uuid)
+        
+        notificationCenter.getPendingNotificationRequests { (notificationRequests) in
+            for notificationRequest:UNNotificationRequest in notificationRequests {
+                
+                if let calendarNotificationTrigger = notificationRequest.trigger as? UNCalendarNotificationTrigger {
+                    
+                    let triggerDate = calendarNotificationTrigger.nextTriggerDate()
+                    let repeats = calendarNotificationTrigger.repeats
+                    
+                    let scheduledHour = Calendar.current.component(.hour, from: triggerDate!)
+                    let scheduledMinute = Calendar.current.component(.minute, from: triggerDate!)
+                    let scheduledDay = Calendar.current.component(.day, from: triggerDate!)
+                    
+                    // Test time and day and repeat status
+                    
+                    let hourToTest = timeToTest/3600
+                    let minuteToTest = timeToTest/60 - hourToTest * 60
+                    
+                    // Confirm that the Notification has the correct time
+                    
+                    XCTAssert(scheduledHour == hourToTest)
+                    XCTAssert(scheduledMinute == minuteToTest)
+                    
+                    // Confirm that the notification was set for the correct day (ie. today)
+                    
+                    XCTAssert(scheduledDay == dayOfMonth)
+                    
+                    // Confirm that the notification is non repeating
+                    
+                    XCTAssert(repeats == false)
+                    
+                }
+                
+            }
+            
+        }
+        
+    }
+    
+    
+    func testGivenAlarmCreated_WhenUserDisablesAlarm_AlarmIsDisabled() {
+        
+        // - Test Alarm disabled, corresponding notification should be removed, Alarm still in CoreData
+        
+        // Remove all notifications.
+        
+        notificationCenter.removeAllPendingNotificationRequests()
+        notificationCenter.removeAllDeliveredNotifications()
+        
+        let exp = expectation(description: "Check Schedule State - false")
+        
+        // Create an alarm
+        
+        let newAlarm = Alarm()
+        let timeToTest = 6 * 3600 // 6.00 am
+        let repeatDaysToTest:[Bool] = [false,false,false,false,false,true,false]
+        
+        newAlarm.time = timeToTest
+        newAlarm.repeatDays = repeatDaysToTest
+        
+        // Save to CoreData
+        
+        _ = dataManager.addAlarm(alarm: newAlarm)
+        
+        var retrievedManagedAlarm = dataManager.returnAllAlarms()[0]
+        
+        // Convert to Alarm object
+        
+        let alarm = dataManager.convertAlarm(managedAlarm: retrievedManagedAlarm)
+        
+        // Enable the alarm
+        
+        notificationScheduler.enableAlarm(alarm: alarm, uuid: alarm.uuid)
+        
+        // Simulate disable tha alarm notification
+        
+        alarm.enabled = false
+        dataManager.updateAlarm(alarm: alarm)
+        
+        // get the alarms uuid and check that the notification has been removed
+        
+        retrievedManagedAlarm = dataManager.returnAllAlarms()[0]
+        
+        let uuid = retrievedManagedAlarm.uuid
+        
+        confirmNotificationIsPending(for: uuid!) { [self] scheduled in
+            
+            // Test enable - does the notification exist in the queue ?
+        
+            scheduledState = scheduled
+            
+            exp.fulfill()
+            
+            
+        }
+    
+        waitForExpectations(timeout: 2) { [self] error in
+            
+            if let error = error {
+                
+                        XCTFail("waitForExpectationsWithTimeout errored: \(error)")
+                    }
+            
+            XCTAssertEqual(scheduledState, false)
+            
+        }
+        
+        
+        
+    }
+    
+    func testGivenAlarmCreated_WhenUserDeletesAlarm_AlarmIsDeleted() {
         
         // Test deleting alarm
         
@@ -113,12 +252,17 @@ class WakyZzzTests: XCTestCase {
     }
     
     
-    func testAlarmNotificationSchedulingEnable() {
+    func testGivenAlarmIsCreatedAndNotificationIsScheduled_CorrespondingNotificationIdentifierIsPending() {
+        
+        // Test that once an alarm has been created and a notification with it, that a notification is
+        // pending with the correct identifier
         
         // Remove all notifications.
         
         notificationCenter.removeAllPendingNotificationRequests()
         notificationCenter.removeAllDeliveredNotifications()
+        
+        let exp = expectation(description: "Check Schedule State - false")
         
         let newAlarm = Alarm()
         
@@ -135,30 +279,88 @@ class WakyZzzTests: XCTestCase {
         // Add the notifications via the schedular.
         
         notificationScheduler.enableAlarm(alarm: newAlarm, uuid: uuid)
-    
-        // Check that a notification with the correct UUID has been scheduled.
+
+        // Check that a notification with the correct UUID is pending
+
         
-        notificationCenter.getPendingNotificationRequests { (notificationRequests) in
-            for notificationRequest:UNNotificationRequest in notificationRequests {
+        confirmNotificationIsPending(for: uuid) { [self] scheduled in
+            
+            // Test enable - does the notification exist in the queue ?
+        
+            scheduledState = scheduled
+            
+            exp.fulfill()
+            
+            
+        }
+    
+        waitForExpectations(timeout: 2) { [self] error in
+            
+            if let error = error {
                 
-                self.modifiedIdentifier = notificationRequest.identifier
-                self.modifiedIdentifier.removeLast()
-                
-                if self.modifiedIdentifier == uuid.uuidString {
-                    
-                    self.matchingUUID = self.modifiedIdentifier
-                
-                }
-                
-            }
+                        XCTFail("waitForExpectationsWithTimeout errored: \(error)")
+                    }
+            
+            XCTAssertEqual(scheduledState, true)
             
         }
         
-        // Test enable - does the notification exist in the queue ?
     
-        XCTAssert(self.matchingUUID == self.modifiedIdentifier)
+       
+        
         
     }
+    
+    func testGivenNoAlarmTimeSet_WhenUserAddsAlarm_AlarmDefaultsTo8am() {
+        
+        // Testing alarm defaults to 8:00 am when nothing specified
+        
+        let newAlarm = Alarm()
+        
+        // Save to CoreData
+        
+        _ = dataManager.addAlarm(alarm: newAlarm)
+        
+        let retrievedManagedAlarm = dataManager.returnAllAlarms()[0]
+        
+        // Convert to Alarm object
+        
+        let alarm = dataManager.convertAlarm(managedAlarm: retrievedManagedAlarm)
+        
+        XCTAssert(alarm.time == 8 * 3600)
+        
+        
+    }
+    
+    // Helper Methods
+    
+    func confirmNotificationIsPending(for uuid: UUID, completion: @escaping  (Bool) -> Void) {
+        
+        var modifiedIdentifier = ""
+        
+        notificationCenter.getPendingNotificationRequests { (notificationRequests) in
+            
+            print ("Notification count = ", notificationRequests.count)
+            
+            if notificationRequests.count != 0 {
+                
+                modifiedIdentifier = notificationRequests[0].identifier
+                modifiedIdentifier.removeLast()
+                
+                completion(modifiedIdentifier == uuid.uuidString)
+                
+            } else {
+                
+                completion(false)
+                
+            }
+            
+            
+            
+        }
+        
+    }
+    
     
     func deleteAllAlarms() {
         

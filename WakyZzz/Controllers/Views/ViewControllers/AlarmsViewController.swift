@@ -35,7 +35,7 @@ class AlarmsViewController: UIViewController, UITableViewDelegate, UITableViewDa
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        // notificationScheduler.showPending()
+        notificationScheduler.showPending()
         
         config()
         
