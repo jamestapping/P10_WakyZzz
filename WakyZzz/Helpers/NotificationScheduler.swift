@@ -18,7 +18,6 @@ class NotificationScheduler {
     init() {
         
         setupNotificationActions()
-        
     }
     
     // Used for debug to show scheduled alarms
@@ -46,26 +45,14 @@ class NotificationScheduler {
     
     func disableAlarm(alarm: Alarm) {
         
-        print ("Disable Alarm Says:")
-        
-        print ("alarm.uuid.uuidString (the Alarm to disable)", alarm.uuid.uuidString )
-        
         let uuid = alarm.uuid.uuidString
         
         notificationCenter.getPendingNotificationRequests { [self] (notifications) in
             for item in notifications {
                 
-                print ("item.identifier (the uuid of the pending alarm)", item.identifier)
-                
                 if(item.identifier.contains(uuid)) {
                     
-                    print ("Running removePendingNotificationRequests")
-                    
-                    print ("Deleting notification with identifier ", item.identifier)
-                    
                     notificationCenter.removePendingNotificationRequests(withIdentifiers: [item.identifier])
-                    
-    
                     
                 }
             }

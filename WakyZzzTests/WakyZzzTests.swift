@@ -13,7 +13,7 @@
 // - Test Delete alarm
 // - Test alarm defaults to 8:00 am
 // - Test non repeating alarm created for the same day
-// - Test Alarm disabled, corresponding notification should be removed, Alarm still in CoreData
+// - Test Alarm disabled, corresponding notification should be removed, Alarm remains in CoreData
 
 
 import XCTest
@@ -30,6 +30,7 @@ class WakyZzzTests: XCTestCase {
     
     var scheduledState = false
     
+    
     var notificationRequestsCount: Int?
     
     override func setUp() {
@@ -40,7 +41,7 @@ class WakyZzzTests: XCTestCase {
         notificationScheduler = NotificationScheduler()
         
         removeAllNotifications()
-        
+
         deleteAllAlarms()
         
     }
@@ -48,7 +49,7 @@ class WakyZzzTests: XCTestCase {
     override func tearDown() {
         
         removeAllNotifications()
-        
+
         deleteAllAlarms()
     }
     
@@ -211,6 +212,87 @@ class WakyZzzTests: XCTestCase {
         
     }
     
+    func testGivenTwoAlarmsCreated_UserDeletesOneAlarm_OneAlarmIsRemainsAndOneNotificationRemains() {
+        
+        let exp = expectation(description: "Check Schedule State for notification uuidOne - true")
+        
+        let newAlarm = Alarm()
+        var timeToTest = 6 * 3600 // 6.00 am
+        var repeatDaysToTest:[Bool] = [false,false,false,false,false,true,false]
+        
+        newAlarm.time = timeToTest
+        newAlarm.repeatDays = repeatDaysToTest
+        
+        // Save to CoreData
+        
+        let uuidOne = dataManager.addAlarm(alarm: newAlarm)
+        
+        // Schedule the alarm notification
+        
+        notificationScheduler.enableAlarm(alarm: newAlarm, uuid: uuidOne)
+        
+        timeToTest = 13 * 3600 // 1:00 pm
+        repeatDaysToTest = [false,true,false,false,false,false,false]
+        
+        newAlarm.time = timeToTest
+        newAlarm.repeatDays = repeatDaysToTest
+        
+        // Save to CoreData
+        
+        let uuidTwo = dataManager.addAlarm(alarm: newAlarm)
+        
+        // Schedule the alarm notification
+        
+        notificationScheduler.enableAlarm(alarm: newAlarm, uuid: uuidTwo)
+        
+        // Simulate deleting an alarm
+        
+        var alarms = dataManager.returnAllAlarms()
+        let alarm = dataManager.convertAlarm(managedAlarm: alarms[0])
+        
+        dataManager.deleteAlarm(alarm: alarm)
+        
+        notificationScheduler.disableAlarm(alarm: alarm)
+        
+        // Confirm that only one alarm exists with the corresponding alarm notification
+        
+        alarms = dataManager.returnAllAlarms()
+        
+        // Assert only one ManagedAlarm object remains
+        
+        XCTAssert(alarms.count == 1)
+        
+        
+        // Check that a notification with the correct UUID is still pending
+
+        confirmNotificationIsPending(for: uuidOne) { [self] scheduled in
+            
+            // Test enable - does the notification exist in the queue ?
+        
+            scheduledState = scheduled
+            
+            exp.fulfill()
+            
+        }
+    
+        
+        waitForExpectations(timeout: 2) { [self] error in
+
+            if let error = error {
+
+                        XCTFail("waitForExpectationsWithTimeout errored: \(error)")
+                    }
+
+            // Still pending ?
+
+            XCTAssertEqual(scheduledState, true)
+
+        }
+        
+        
+    }
+    
+    
     func testGivenAlarmCreated_WhenUserDeletesAlarm_AlarmIsDeleted() {
         
         // Test deleting alarm
@@ -248,7 +330,7 @@ class WakyZzzTests: XCTestCase {
     
     func testGivenAlarmIsCreatedAndNotificationIsScheduled_CorrespondingNotificationIdentifierIsPending() {
         
-        // Test that once an alarm has been created and a notification with it, that a notification is
+        // Test that once an alarm has been created and     a notification with it, that a notification is
         // pending with the correct identifier
         
         let exp = expectation(description: "Check Schedule State - false")
@@ -271,7 +353,6 @@ class WakyZzzTests: XCTestCase {
 
         // Check that a notification with the correct UUID is pending
 
-        
         confirmNotificationIsPending(for: uuid) { [self] scheduled in
             
             // Test enable - does the notification exist in the queue ?
